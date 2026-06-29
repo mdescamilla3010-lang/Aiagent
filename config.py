@@ -7,13 +7,16 @@ load_dotenv()
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 CLAUDE_MODEL = "claude-sonnet-4-6"
 
-# WhatsApp (Meta Cloud API)
-WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
+# Meta (WhatsApp + Facebook + Instagram)
+META_TOKEN = os.getenv("META_TOKEN")                         # Token de acceso de la App de Meta
+META_VERIFY_TOKEN = os.getenv("META_VERIFY_TOKEN", "real_estate_verify_token")
 WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
-WHATSAPP_VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN", "real_estate_verify_token")
+FACEBOOK_PAGE_ID = os.getenv("FACEBOOK_PAGE_ID")
+INSTAGRAM_ACCOUNT_ID = os.getenv("INSTAGRAM_ACCOUNT_ID")
 
-# HubSpot CRM
-HUBSPOT_API_KEY = os.getenv("HUBSPOT_API_KEY")
+# Go High Level CRM
+GHL_API_KEY = os.getenv("GHL_API_KEY")
+GHL_LOCATION_ID = os.getenv("GHL_LOCATION_ID")              # ID del sub-account/location
 
 # Google Calendar
 GOOGLE_CREDENTIALS_FILE = os.getenv("GOOGLE_CREDENTIALS_FILE", "credentials.json")

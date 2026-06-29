@@ -1,140 +1,170 @@
 import httpx
 import logging
 from typing import Optional
-from config import HUBSPOT_API_KEY
+from config import GHL_API_KEY, GHL_LOCATION_ID
 
 logger = logging.getLogger(__name__)
 
-HUBSPOT_BASE = "https://api.hubapi.com"
+GHL_BASE = "https://rest.gohighlevel.com/v1"
 HEADERS = {
-    "Authorization": f"Bearer {HUBSPOT_API_KEY}",
+    "Authorization": f"Bearer {GHL_API_KEY}",
     "Content-Type": "application/json",
 }
 
 
-async def upsert_contact(phone: str, data: dict) -> Optional[str]:
-    """Crea o actualiza un contacto en HubSpot. Retorna el contact ID."""
-    contact_id = await _find_contact_by_phone(phone)
+async def upsert_contact(phone: str, data: dict, channel: str = "whatsapp") -> Optional[str]:
+    """Crea o actualiza un contacto en GHL. Retorna el contact ID."""
+    contact_id = await _find_contact(phone, data)
 
-    properties = _build_properties(phone, data)
+    props = _build_properties(phone, data, channel)
 
     if contact_id:
-        await _update_contact(contact_id, properties)
-        logger.info(f"Contacto actualizado en HubSpot: {contact_id}")
-        return contact_id
+        await _update_contact(contact_id, props)
+        logger.info(f"Contacto actualizado en GHL: {contact_id}")
     else:
-        contact_id = await _create_contact(properties)
-        logger.info(f"Contacto creado en HubSpot: {contact_id}")
-        return contact_id
+        contact_id = await _create_contact(props)
+        logger.info(f"Contacto creado en GHL: {contact_id}")
+
+    return contact_id
 
 
-async def log_note(contact_id: str, note: str) -> None:
-    """Registra una nota/actividad en el contacto."""
+async def add_note(contact_id: str, note: str) -> None:
+    """Agrega una nota al contacto en GHL."""
     async with httpx.AsyncClient() as client:
-        payload = {
-            "engagement": {"active": True, "type": "NOTE"},
-            "associations": {"contactIds": [int(contact_id)]},
-            "metadata": {"body": note},
-        }
         resp = await client.post(
-            f"{HUBSPOT_BASE}/engagements/v1/engagements",
+            f"{GHL_BASE}/contacts/{contact_id}/notes",
             headers=HEADERS,
-            json=payload,
+            json={"body": note},
         )
         if resp.status_code not in (200, 201):
-            logger.error(f"Error al registrar nota HubSpot: {resp.text}")
+            logger.error(f"Error al agregar nota GHL: {resp.text}")
 
 
-async def update_deal_stage(contact_id: str, stage: str, desarrollo: str) -> None:
-    """Crea o actualiza un deal asociado al contacto."""
+async def create_opportunity(contact_id: str, desarrollo: str, stage: str = "nuevo lead") -> Optional[str]:
+    """Crea una oportunidad (pipeline) en GHL asociada al contacto."""
     from config import DEVELOPMENTS
     dev_name = DEVELOPMENTS.get(desarrollo, {}).get("nombre", desarrollo)
 
     async with httpx.AsyncClient() as client:
         payload = {
-            "properties": {
-                "dealname": f"Lead - {dev_name}",
-                "dealstage": stage,
-                "pipeline": "default",
-            },
-            "associations": [
-                {
-                    "to": {"id": contact_id},
-                    "types": [{"associationCategory": "HUBSPOT_DEFINED", "associationTypeId": 3}],
-                }
-            ],
+            "title": f"Lead - {dev_name}",
+            "status": "open",
+            "stageId": stage,
+            "contactId": contact_id,
+            "locationId": GHL_LOCATION_ID,
         }
         resp = await client.post(
-            f"{HUBSPOT_BASE}/crm/v3/objects/deals",
+            f"{GHL_BASE}/pipelines/opportunities",
             headers=HEADERS,
             json=payload,
-        )
-        if resp.status_code not in (200, 201):
-            logger.error(f"Error al crear deal HubSpot: {resp.text}")
-
-
-async def _find_contact_by_phone(phone: str) -> Optional[str]:
-    async with httpx.AsyncClient() as client:
-        payload = {
-            "filterGroups": [
-                {"filters": [{"propertyName": "phone", "operator": "EQ", "value": phone}]}
-            ],
-            "properties": ["id"],
-        }
-        resp = await client.post(
-            f"{HUBSPOT_BASE}/crm/v3/objects/contacts/search",
-            headers=HEADERS,
-            json=payload,
-        )
-        if resp.status_code == 200:
-            results = resp.json().get("results", [])
-            if results:
-                return results[0]["id"]
-    return None
-
-
-async def _create_contact(properties: dict) -> Optional[str]:
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            f"{HUBSPOT_BASE}/crm/v3/objects/contacts",
-            headers=HEADERS,
-            json={"properties": properties},
         )
         if resp.status_code in (200, 201):
-            return resp.json()["id"]
-        logger.error(f"Error al crear contacto HubSpot: {resp.text}")
+            opp_id = resp.json().get("opportunity", {}).get("id")
+            logger.info(f"Oportunidad creada en GHL: {opp_id}")
+            return opp_id
+        logger.error(f"Error al crear oportunidad GHL: {resp.text}")
         return None
 
 
-async def _update_contact(contact_id: str, properties: dict) -> None:
+async def update_opportunity_stage(opportunity_id: str, stage: str) -> None:
+    """Actualiza el stage de una oportunidad en GHL."""
     async with httpx.AsyncClient() as client:
-        resp = await client.patch(
-            f"{HUBSPOT_BASE}/crm/v3/objects/contacts/{contact_id}",
+        resp = await client.put(
+            f"{GHL_BASE}/pipelines/opportunities/{opportunity_id}",
             headers=HEADERS,
-            json={"properties": properties},
+            json={"stageId": stage},
         )
         if resp.status_code not in (200, 201):
-            logger.error(f"Error al actualizar contacto HubSpot: {resp.text}")
+            logger.error(f"Error al actualizar oportunidad GHL: {resp.text}")
 
 
-def _build_properties(phone: str, data: dict) -> dict:
-    props = {"phone": phone, "hs_lead_status": "IN_PROGRESS"}
+async def add_tag(contact_id: str, tag: str) -> None:
+    """Agrega un tag al contacto en GHL."""
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{GHL_BASE}/contacts/{contact_id}/tags",
+            headers=HEADERS,
+            json={"tags": [tag]},
+        )
+        if resp.status_code not in (200, 201):
+            logger.error(f"Error al agregar tag GHL: {resp.text}")
 
-    mapping = {
-        "nombre": "firstname",
-        "email": "email",
-        "presupuesto": "budget__c",
-        "tipo_compra": "tipo_compra__c",
-        "interes": "desarrollo_interes__c",
+
+async def _find_contact(phone: str, data: dict) -> Optional[str]:
+    """Busca contacto por teléfono o email."""
+    async with httpx.AsyncClient() as client:
+        # Buscar por teléfono
+        resp = await client.get(
+            f"{GHL_BASE}/contacts/",
+            headers=HEADERS,
+            params={"locationId": GHL_LOCATION_ID, "query": phone},
+        )
+        if resp.status_code == 200:
+            contacts = resp.json().get("contacts", [])
+            if contacts:
+                return contacts[0]["id"]
+
+        # Buscar por email si está disponible
+        email = data.get("email")
+        if email:
+            resp = await client.get(
+                f"{GHL_BASE}/contacts/",
+                headers=HEADERS,
+                params={"locationId": GHL_LOCATION_ID, "query": email},
+            )
+            if resp.status_code == 200:
+                contacts = resp.json().get("contacts", [])
+                if contacts:
+                    return contacts[0]["id"]
+
+    return None
+
+
+async def _create_contact(props: dict) -> Optional[str]:
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{GHL_BASE}/contacts/",
+            headers=HEADERS,
+            json=props,
+        )
+        if resp.status_code in (200, 201):
+            return resp.json().get("contact", {}).get("id")
+        logger.error(f"Error al crear contacto GHL: {resp.text}")
+        return None
+
+
+async def _update_contact(contact_id: str, props: dict) -> None:
+    async with httpx.AsyncClient() as client:
+        resp = await client.put(
+            f"{GHL_BASE}/contacts/{contact_id}",
+            headers=HEADERS,
+            json=props,
+        )
+        if resp.status_code not in (200, 201):
+            logger.error(f"Error al actualizar contacto GHL: {resp.text}")
+
+
+def _build_properties(phone: str, data: dict, channel: str) -> dict:
+    nombre = data.get("nombre", "")
+    parts = nombre.split(" ", 1) if nombre else []
+
+    props = {
+        "locationId": GHL_LOCATION_ID,
+        "phone": phone,
+        "source": f"IA - {channel.capitalize()}",
+        "tags": [channel, "ia-agente"],
+        "customField": [
+            {"key": "desarrollo_interes", "value": data.get("interes", "")},
+            {"key": "tipo_compra", "value": data.get("tipo_compra", "")},
+            {"key": "canal_entrada", "value": channel},
+        ],
     }
-    for key, hs_key in mapping.items():
-        if data.get(key):
-            if key == "nombre":
-                parts = data[key].split(" ", 1)
-                props["firstname"] = parts[0]
-                if len(parts) > 1:
-                    props["lastname"] = parts[1]
-            else:
-                props[hs_key] = data[key]
 
-    return props
+    if parts:
+        props["firstName"] = parts[0]
+        if len(parts) > 1:
+            props["lastName"] = parts[1]
+    if data.get("email"):
+        props["email"] = data["email"]
+
+    return {k: v for k, v in props.items() if v}
