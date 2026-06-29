@@ -36,12 +36,17 @@ def parse_webhook(payload: dict) -> IncomingMessage | None:
     """
     Detecta el canal por el campo 'object' del webhook de Meta y
     delega al parser correspondiente.
+    Retorna None para eventos leadgen (se manejan en leadgen.py).
     """
+    from leadgen import is_leadgen_event
+
     obj = payload.get("object", "")
 
     if obj == "whatsapp_business_account":
         return _parse_whatsapp(payload)
     elif obj == "page":
+        if is_leadgen_event(payload):
+            return None  # Manejado por el flujo de leadgen en main.py
         return _parse_facebook(payload)
     elif obj == "instagram":
         return _parse_instagram(payload)

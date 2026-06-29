@@ -17,6 +17,20 @@ INSTAGRAM_ACCOUNT_ID = os.getenv("INSTAGRAM_ACCOUNT_ID")
 # Go High Level CRM
 GHL_API_KEY = os.getenv("GHL_API_KEY")
 GHL_LOCATION_ID = os.getenv("GHL_LOCATION_ID")              # ID del sub-account/location
+GHL_PIPELINE_ID = os.getenv("GHL_PIPELINE_ID")              # ID del pipeline inmobiliario
+
+# Stage IDs del pipeline en GHL (obtener de GET /pipelines)
+GHL_PIPELINE_STAGES: dict[str, str] = {
+    "nuevo_lead":       os.getenv("GHL_STAGE_NUEVO_LEAD", ""),
+    "contactado":       os.getenv("GHL_STAGE_CONTACTADO", ""),
+    "calificado":       os.getenv("GHL_STAGE_CALIFICADO", ""),
+    "cita_propuesta":   os.getenv("GHL_STAGE_CITA_PROPUESTA", ""),
+    "cita_confirmada":  os.getenv("GHL_STAGE_CITA_CONFIRMADA", ""),
+    "visita_realizada": os.getenv("GHL_STAGE_VISITA_REALIZADA", ""),
+    "negociacion":      os.getenv("GHL_STAGE_NEGOCIACION", ""),
+    "cerrado_ganado":   os.getenv("GHL_STAGE_CERRADO_GANADO", ""),
+    "cerrado_perdido":  os.getenv("GHL_STAGE_CERRADO_PERDIDO", ""),
+}
 
 # Google Calendar
 GOOGLE_CREDENTIALS_FILE = os.getenv("GOOGLE_CREDENTIALS_FILE", "credentials.json")
