@@ -1,0 +1,158 @@
+{
+  "name": "3. Secuencia de Recordatorios y Nurturing",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "hours", "hoursInterval": 1 }] }
+      },
+      "id": "r1",
+      "name": "Trigger cada hora",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://rest.gohighlevel.com/v1/contacts/",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $vars.GHL_API_KEY }}" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "locationId", "value": "={{ $vars.GHL_LOCATION_ID }}" },
+            { "name": "tags", "value": "ia-agente" },
+            { "name": "limit", "value": "100" }
+          ]
+        }
+      },
+      "id": "r2",
+      "name": "Obtener leads activos de GHL",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "contacts",
+        "options": {}
+      },
+      "id": "r3",
+      "name": "Split por contacto",
+      "type": "n8n-nodes-base.splitOut",
+      "position": [640, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const contact = $input.first().json;\nconst now = new Date();\n\n// Obtener campos relevantes\nconst fields = {};\nfor (const f of contact.customField || []) {\n  fields[f.key] = f.value;\n}\n\nconst stage = fields.pipeline_stage || 'contactado';\nconst lastMsgTime = fields.last_message_time ? new Date(fields.last_message_time) : null;\nconst hoursElapsed = lastMsgTime ? (now - lastMsgTime) / 36e5 : 999;\nconst citaFecha = fields.cita_fecha || '';\nconst recordatoriosEnviados = parseInt(fields.recordatorios_enviados || '0');\n\nlet shouldSend = false;\nlet templateKey = '';\nlet message = '';\n\nconst nombre = contact.firstName || 'amigo/a';\nconst desarrollo = fields.desarrollo_interes || 'nuestros desarrollos';\n\nif (stage === 'contactado' || stage === 'calificado') {\n  // Nurturing: sin respuesta\n  if (hoursElapsed >= 72 && recordatoriosEnviados === 0) {\n    templateKey = 'nurture_3d';\n    message = `Hola ${nombre} 🏡 Vi que te interesaste en ${desarrollo}. ¿Tienes dudas? Con gusto te cuento más o agendamos una visita rápida. 😊`;\n    shouldSend = true;\n  } else if (hoursElapsed >= 168 && recordatoriosEnviados === 1) {\n    templateKey = 'nurture_7d';\n    message = `Hola ${nombre}, todavía tenemos disponibilidad en ${desarrollo} esta semana. ¿Agendamos 30 minutos para conocer el proyecto? 📅`;\n    shouldSend = true;\n  }\n} else if (stage === 'cita_confirmada' && citaFecha) {\n  // Recordatorios de cita\n  const citaDt = new Date(citaFecha);\n  const hoursToAppt = (citaDt - now) / 36e5;\n  if (hoursToAppt > 0 && hoursToAppt <= 24 && recordatoriosEnviados === 0) {\n    templateKey = 'pre_cita_24h';\n    message = `Hola ${nombre} ✨ Te recuerdo que mañana tienes tu visita a ${desarrollo}. ¿Tienes alguna duda antes de verte? 😊`;\n    shouldSend = true;\n  } else if (hoursToAppt > 0 && hoursToAppt <= 2 && recordatoriosEnviados === 1) {\n    templateKey = 'pre_cita_2h';\n    message = `Hola ${nombre}, ¡en unas horas es tu visita a ${desarrollo}! Te esperamos. Si necesitas indicaciones escríbeme. 🏠`;\n    shouldSend = true;\n  }\n}\n\nif (!shouldSend) return [];\n\nreturn [{ json: {\n  contactId: contact.id,\n  phone: contact.phone,\n  channel: fields.canal_entrada?.includes('facebook') ? 'facebook' : 'whatsapp',\n  senderId: fields.facebook_sender_id || contact.phone,\n  message,\n  templateKey,\n  recordatoriosEnviados\n}}];"
+      },
+      "id": "r4",
+      "name": "Evaluar qué recordatorio enviar",
+      "type": "n8n-nodes-base.code",
+      "position": [860, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.channel }}",
+              "rightValue": "whatsapp",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ]
+        }
+      },
+      "id": "r5",
+      "name": "¿WhatsApp o Messenger?",
+      "type": "n8n-nodes-base.if",
+      "position": [1080, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.facebook.com/v19.0/{{ $vars.WHATSAPP_PHONE_NUMBER_ID }}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $vars.META_TOKEN }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{ $json.phone }}\",\n  \"type\": \"text\",\n  \"text\": { \"body\": \"{{ $json.message }}\" }\n}"
+      },
+      "id": "r6",
+      "name": "Enviar recordatorio WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1300, 220]
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.facebook.com/v19.0/me/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $vars.META_TOKEN }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"recipient\": { \"id\": \"{{ $json.senderId }}\" },\n  \"message\": { \"text\": \"{{ $json.message }}\" },\n  \"messaging_type\": \"MESSAGE_TAG\",\n  \"tag\": \"CONFIRMED_EVENT_UPDATE\"\n}"
+      },
+      "id": "r7",
+      "name": "Enviar recordatorio Facebook/IG",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1300, 400]
+    },
+    {
+      "parameters": {
+        "url": "=https://rest.gohighlevel.com/v1/contacts/{{ $('Evaluar qué recordatorio enviar').item.json.contactId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $vars.GHL_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"customField\": [\n    { \"key\": \"recordatorios_enviados\", \"value\": \"{{ $('Evaluar qué recordatorio enviar').item.json.recordatoriosEnviados + 1 }}\" },\n    { \"key\": \"ultimo_recordatorio\", \"value\": \"{{ new Date().toISOString() }}\" }\n  ]\n}"
+      },
+      "id": "r8",
+      "name": "Marcar recordatorio enviado en GHL",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1520, 300]
+    }
+  ],
+  "connections": {
+    "Trigger cada hora": {
+      "main": [[{ "node": "Obtener leads activos de GHL", "type": "main", "index": 0 }]]
+    },
+    "Obtener leads activos de GHL": {
+      "main": [[{ "node": "Split por contacto", "type": "main", "index": 0 }]]
+    },
+    "Split por contacto": {
+      "main": [[{ "node": "Evaluar qué recordatorio enviar", "type": "main", "index": 0 }]]
+    },
+    "Evaluar qué recordatorio enviar": {
+      "main": [[{ "node": "¿WhatsApp o Messenger?", "type": "main", "index": 0 }]]
+    },
+    "¿WhatsApp o Messenger?": {
+      "main": [
+        [{ "node": "Enviar recordatorio WhatsApp", "type": "main", "index": 0 }],
+        [{ "node": "Enviar recordatorio Facebook/IG", "type": "main", "index": 0 }]
+      ]
+    },
+    "Enviar recordatorio WhatsApp": {
+      "main": [[{ "node": "Marcar recordatorio enviado en GHL", "type": "main", "index": 0 }]]
+    },
+    "Enviar recordatorio Facebook/IG": {
+      "main": [[{ "node": "Marcar recordatorio enviado en GHL", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "tags": [{ "name": "inmobiliario" }]
+}

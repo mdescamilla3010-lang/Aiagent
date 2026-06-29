@@ -1,0 +1,334 @@
+{
+  "name": "2. Agente IA — WhatsApp / Facebook / Instagram DM",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "mensajes",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "m1",
+      "name": "Webhook Mensajes Meta",
+      "type": "n8n-nodes-base.webhook",
+      "position": [200, 300],
+      "webhookId": "mensajes-webhook"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "EVENT_RECEIVED"
+      },
+      "id": "m2",
+      "name": "Responder 200",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "position": [400, 180]
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $input.first().json;\nconst obj = payload.object;\n\nlet channel = '', senderId = '', phone = '', name = '', text = '', messageId = '';\n\nif (obj === 'whatsapp_business_account') {\n  const value = payload.entry?.[0]?.changes?.[0]?.value;\n  if (!value?.messages) return [];\n  const msg = value.messages[0];\n  const contact = value.contacts?.[0];\n  channel = 'whatsapp';\n  senderId = msg.from;\n  phone = msg.from;\n  name = contact?.profile?.name || '';\n  text = msg?.text?.body || '';\n  messageId = msg.id;\n} else if (obj === 'page') {\n  // Ignorar leadgen events (manejados en workflow 1)\n  const changes = payload.entry?.[0]?.changes || [];\n  if (changes.some(c => c.field === 'leadgen')) return [];\n  const messaging = payload.entry?.[0]?.messaging?.[0];\n  if (!messaging?.message?.text) return [];\n  channel = 'facebook';\n  senderId = messaging.sender.id;\n  text = messaging.message.text;\n  messageId = messaging.message.mid;\n} else if (obj === 'instagram') {\n  const messaging = payload.entry?.[0]?.messaging?.[0];\n  if (!messaging?.message?.text) return [];\n  channel = 'instagram';\n  senderId = messaging.sender.id;\n  text = messaging.message.text;\n  messageId = messaging.message.mid;\n} else {\n  return [];\n}\n\nif (!text) return [];\nreturn [{ json: { channel, senderId, phone, name, text, messageId } }];"
+      },
+      "id": "m3",
+      "name": "Parsear canal y mensaje",
+      "type": "n8n-nodes-base.code",
+      "position": [400, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://rest.gohighlevel.com/v1/contacts/",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $vars.GHL_API_KEY }}" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "locationId", "value": "={{ $vars.GHL_LOCATION_ID }}" },
+            { "name": "query", "value": "={{ $json.phone || $json.senderId }}" }
+          ]
+        }
+      },
+      "id": "m4",
+      "name": "Buscar contacto en GHL",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [620, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const contactSearch = $input.first().json;\nconst contact = contactSearch.contacts?.[0] || null;\nconst msgData = $('Parsear canal y mensaje').item.json;\n\n// Recuperar historial desde notas del contacto (campo customField)\nlet history = [];\nif (contact) {\n  const histField = contact.customField?.find(f => f.key === 'chat_history');\n  if (histField?.value) {\n    try { history = JSON.parse(histField.value); } catch(e) { history = []; }\n  }\n}\n\n// Limitar a últimas 10 interacciones (20 mensajes)\nif (history.length > 20) history = history.slice(-20);\n\nreturn [{ json: {\n  ...msgData,\n  contactId: contact?.id || null,\n  opportunityId: contact?.customField?.find(f => f.key === 'opportunity_id')?.value || null,\n  currentStage: contact?.customField?.find(f => f.key === 'pipeline_stage')?.value || 'contactado',\n  history,\n  isNewContact: !contact\n}}];"
+      },
+      "id": "m5",
+      "name": "Recuperar historial de conversación",
+      "type": "n8n-nodes-base.code",
+      "position": [820, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-api-key", "value": "={{ $vars.ANTHROPIC_API_KEY }}" },
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 1024,\n  \"system\": \"Eres un asesor inmobiliario virtual amigable y profesional. Tu objetivo es ayudar a los prospectos y agendar una cita con un asesor humano.\\n\\n## Desarrollos disponibles\\n\\n### {{ $vars.DESARROLLO_A_NOMBRE }}\\n- Tipo: {{ $vars.DESARROLLO_A_TIPO }}\\n- Ubicación: {{ $vars.DESARROLLO_A_UBICACION }}\\n- Precio desde: {{ $vars.DESARROLLO_A_PRECIO }}\\n- Amenidades: {{ $vars.DESARROLLO_A_AMENIDADES }}\\n- Disponibilidad: {{ $vars.DESARROLLO_A_DISPONIBILIDAD }}\\n\\n### {{ $vars.DESARROLLO_B_NOMBRE }}\\n- Tipo: {{ $vars.DESARROLLO_B_TIPO }}\\n- Ubicación: {{ $vars.DESARROLLO_B_UBICACION }}\\n- Precio desde: {{ $vars.DESARROLLO_B_PRECIO }}\\n- Amenidades: {{ $vars.DESARROLLO_B_AMENIDADES }}\\n- Disponibilidad: {{ $vars.DESARROLLO_B_DISPONIBILIDAD }}\\n\\n## Flujo\\n1. Saluda y pregunta nombre, qué buscan y para qué (inversión o vivienda).\\n2. Recomienda el desarrollo más adecuado según sus respuestas.\\n3. Resuelve dudas sobre precios, planos, financiamiento, ubicación.\\n4. Invita a una visita o llamada con un asesor. Pide: fecha preferida y horario.\\n5. Confirma la cita y envía resumen.\\n\\n## Reglas\\n- Sé cálido y conciso. Mensajes cortos pensados para WhatsApp.\\n- Nunca inventes datos que no están en la información del desarrollo.\\n- Si no sabes algo, di que lo consultarás con el asesor en la cita.\\n- Siempre busca avanzar hacia agendar la cita.\\n- Responde en español.\\n\\n## Acciones\\nAl final de tu respuesta, si debes registrar datos o agendar, incluye EXACTAMENTE este bloque JSON (sin texto después):\\n\\nPara actualizar datos: ```json\\n{\\\"action\\\":\\\"update_lead\\\",\\\"data\\\":{\\\"nombre\\\":\\\"...\\\",\\\"email\\\":\\\"...\\\",\\\"interes\\\":\\\"desarrollo_a|desarrollo_b|ambos\\\",\\\"presupuesto\\\":\\\"...\\\",\\\"tipo_compra\\\":\\\"inversion|vivienda\\\"}}\\n```\\n\\nPara agendar cita: ```json\\n{\\\"action\\\":\\\"schedule_appointment\\\",\\\"data\\\":{\\\"fecha\\\":\\\"YYYY-MM-DD\\\",\\\"hora\\\":\\\"HH:MM\\\",\\\"desarrollo\\\":\\\"desarrollo_a|desarrollo_b\\\",\\\"notas\\\":\\\"...\\\"}}\\n```\\n\\nSolo incluye el JSON cuando tengas datos reales que registrar.\",\n  \"messages\": {{ JSON.stringify($json.history.concat([{role:'user',content:$json.text}])) }}\n}"
+      },
+      "id": "m6",
+      "name": "Claude — Agente IA",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1040, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const resp = $input.first().json;\nconst assistantText = resp.content?.[0]?.text || '';\n\n// Extraer JSON de acción si existe\nconst jsonMatch = assistantText.match(/```json\\s*(\\{[\\s\\S]*?\\})\\s*```/);\nlet action = null;\nif (jsonMatch) {\n  try { action = JSON.parse(jsonMatch[1]); } catch(e) {}\n}\n\n// Limpiar el JSON del texto antes de enviar al usuario\nconst cleanText = assistantText.replace(/```json[\\s\\S]*?```/g, '').trim();\n\n// Actualizar historial\nconst prevData = $('Recuperar historial de conversación').item.json;\nconst newHistory = [\n  ...prevData.history,\n  { role: 'user', content: prevData.text },\n  { role: 'assistant', content: assistantText }\n];\nconst trimmedHistory = newHistory.length > 20 ? newHistory.slice(-20) : newHistory;\n\nreturn [{ json: {\n  ...prevData,\n  assistantText,\n  cleanText,\n  action,\n  newHistory: trimmedHistory\n}}];"
+      },
+      "id": "m7",
+      "name": "Parsear respuesta y acción",
+      "type": "n8n-nodes-base.code",
+      "position": [1260, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEquals" }
+            }
+          ]
+        }
+      },
+      "id": "m8",
+      "name": "¿Hay acción del agente?",
+      "type": "n8n-nodes-base.if",
+      "position": [1480, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.action.action }}",
+              "rightValue": "update_lead",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ]
+        }
+      },
+      "id": "m9",
+      "name": "¿update_lead o schedule?",
+      "type": "n8n-nodes-base.if",
+      "position": [1700, 220]
+    },
+    {
+      "parameters": {
+        "url": "=https://rest.gohighlevel.com/v1/contacts/{{ $json.contactId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $vars.GHL_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"firstName\": \"{{ $json.action.data.nombre?.split(' ')[0] || '' }}\",\n  \"lastName\": \"{{ $json.action.data.nombre?.split(' ').slice(1).join(' ') || '' }}\",\n  \"email\": \"{{ $json.action.data.email || '' }}\",\n  \"customField\": [\n    { \"key\": \"desarrollo_interes\", \"value\": \"{{ $json.action.data.interes || '' }}\" },\n    { \"key\": \"tipo_compra\", \"value\": \"{{ $json.action.data.tipo_compra || '' }}\" },\n    { \"key\": \"presupuesto\", \"value\": \"{{ $json.action.data.presupuesto || '' }}\" },\n    { \"key\": \"pipeline_stage\", \"value\": \"calificado\" },\n    { \"key\": \"chat_history\", \"value\": \"{{ JSON.stringify($json.newHistory) }}\" }\n  ]\n}"
+      },
+      "id": "m10",
+      "name": "Actualizar contacto en GHL",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1920, 160]
+    },
+    {
+      "parameters": {
+        "url": "=https://rest.gohighlevel.com/v1/pipelines/opportunities/{{ $json.opportunityId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $vars.GHL_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"stageId\": \"{{ $vars.GHL_STAGE_CALIFICADO }}\" }"
+      },
+      "id": "m11",
+      "name": "Pipeline → Calificado",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [2120, 160]
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"summary\": \"Visita {{ $json.action.data.desarrollo === 'desarrollo_a' ? $vars.DESARROLLO_A_NOMBRE : $vars.DESARROLLO_B_NOMBRE }} - {{ $json.action.data.notas || 'Prospecto' }}\",\n  \"start\": { \"dateTime\": \"{{ $json.action.data.fecha }}T{{ $json.action.data.hora }}:00\", \"timeZone\": \"America/Mexico_City\" },\n  \"end\": { \"dateTime\": \"{{ $json.action.data.fecha }}T{{ parseInt($json.action.data.hora.split(':')[0])+1 }}:{{ $json.action.data.hora.split(':')[1] }}:00\", \"timeZone\": \"America/Mexico_City\" },\n  \"reminders\": { \"useDefault\": false, \"overrides\": [{ \"method\": \"popup\", \"minutes\": 60 }] }\n}"
+      },
+      "id": "m12",
+      "name": "Crear cita en Google Calendar",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1920, 340]
+    },
+    {
+      "parameters": {
+        "url": "=https://rest.gohighlevel.com/v1/pipelines/opportunities/{{ $('Parsear respuesta y acción').item.json.opportunityId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $vars.GHL_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"stageId\": \"{{ $vars.GHL_STAGE_CITA_CONFIRMADA }}\" }"
+      },
+      "id": "m13",
+      "name": "Pipeline → Cita Confirmada",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [2120, 340]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $('Parsear respuesta y acción').item.json.channel }}",
+              "rightValue": "whatsapp",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ]
+        }
+      },
+      "id": "m14",
+      "name": "¿Canal WhatsApp?",
+      "type": "n8n-nodes-base.if",
+      "position": [2340, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.facebook.com/v19.0/{{ $vars.WHATSAPP_PHONE_NUMBER_ID }}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $vars.META_TOKEN }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{ $('Parsear respuesta y acción').item.json.phone }}\",\n  \"type\": \"text\",\n  \"text\": { \"body\": \"{{ $('Parsear respuesta y acción').item.json.cleanText }}\" }\n}"
+      },
+      "id": "m15",
+      "name": "Enviar respuesta WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [2560, 220]
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.facebook.com/v19.0/me/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $vars.META_TOKEN }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"recipient\": { \"id\": \"{{ $('Parsear respuesta y acción').item.json.senderId }}\" },\n  \"message\": { \"text\": \"{{ $('Parsear respuesta y acción').item.json.cleanText }}\" },\n  \"messaging_type\": \"RESPONSE\"\n}"
+      },
+      "id": "m16",
+      "name": "Enviar respuesta Facebook/Instagram",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [2560, 400]
+    },
+    {
+      "parameters": {
+        "url": "=https://rest.gohighlevel.com/v1/contacts/{{ $('Parsear respuesta y acción').item.json.contactId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $vars.GHL_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"customField\": [\n    { \"key\": \"chat_history\", \"value\": \"{{ JSON.stringify($('Parsear respuesta y acción').item.json.newHistory) }}\" }\n  ]\n}"
+      },
+      "id": "m17",
+      "name": "Guardar historial en GHL",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [2760, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Mensajes Meta": {
+      "main": [[{ "node": "Responder 200", "type": "main", "index": 0 }, { "node": "Parsear canal y mensaje", "type": "main", "index": 0 }]]
+    },
+    "Parsear canal y mensaje": {
+      "main": [[{ "node": "Buscar contacto en GHL", "type": "main", "index": 0 }]]
+    },
+    "Buscar contacto en GHL": {
+      "main": [[{ "node": "Recuperar historial de conversación", "type": "main", "index": 0 }]]
+    },
+    "Recuperar historial de conversación": {
+      "main": [[{ "node": "Claude — Agente IA", "type": "main", "index": 0 }]]
+    },
+    "Claude — Agente IA": {
+      "main": [[{ "node": "Parsear respuesta y acción", "type": "main", "index": 0 }]]
+    },
+    "Parsear respuesta y acción": {
+      "main": [[{ "node": "¿Hay acción del agente?", "type": "main", "index": 0 }]]
+    },
+    "¿Hay acción del agente?": {
+      "main": [
+        [{ "node": "¿update_lead o schedule?", "type": "main", "index": 0 }],
+        [{ "node": "¿Canal WhatsApp?", "type": "main", "index": 0 }]
+      ]
+    },
+    "¿update_lead o schedule?": {
+      "main": [
+        [{ "node": "Actualizar contacto en GHL", "type": "main", "index": 0 }],
+        [{ "node": "Crear cita en Google Calendar", "type": "main", "index": 0 }]
+      ]
+    },
+    "Actualizar contacto en GHL": {
+      "main": [[{ "node": "Pipeline → Calificado", "type": "main", "index": 0 }]]
+    },
+    "Pipeline → Calificado": {
+      "main": [[{ "node": "¿Canal WhatsApp?", "type": "main", "index": 0 }]]
+    },
+    "Crear cita en Google Calendar": {
+      "main": [[{ "node": "Pipeline → Cita Confirmada", "type": "main", "index": 0 }]]
+    },
+    "Pipeline → Cita Confirmada": {
+      "main": [[{ "node": "¿Canal WhatsApp?", "type": "main", "index": 0 }]]
+    },
+    "¿Canal WhatsApp?": {
+      "main": [
+        [{ "node": "Enviar respuesta WhatsApp", "type": "main", "index": 0 }],
+        [{ "node": "Enviar respuesta Facebook/Instagram", "type": "main", "index": 0 }]
+      ]
+    },
+    "Enviar respuesta WhatsApp": {
+      "main": [[{ "node": "Guardar historial en GHL", "type": "main", "index": 0 }]]
+    },
+    "Enviar respuesta Facebook/Instagram": {
+      "main": [[{ "node": "Guardar historial en GHL", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "tags": [{ "name": "inmobiliario" }]
+}

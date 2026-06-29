@@ -1,0 +1,228 @@
+{
+  "name": "1. Facebook Lead Ads → GHL + WhatsApp Bienvenida",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "leadgen",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "n1",
+      "name": "Webhook Meta Leadgen",
+      "type": "n8n-nodes-base.webhook",
+      "position": [240, 300],
+      "webhookId": "leadgen-webhook"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "EVENT_RECEIVED",
+        "options": {}
+      },
+      "id": "n2",
+      "name": "Responder 200 a Meta",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "position": [440, 180]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.object }}",
+              "rightValue": "page",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ]
+        }
+      },
+      "id": "n3",
+      "name": "¿Es evento de Lead Ad?",
+      "type": "n8n-nodes-base.if",
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const entry = $input.first().json.entry[0];\nconst change = entry.changes.find(c => c.field === 'leadgen');\nif (!change) return [];\nconst v = change.value;\nreturn [{ json: {\n  leadgen_id: v.leadgen_id,\n  ad_id: v.ad_id || '',\n  form_id: v.form_id || '',\n  page_id: entry.id\n}}];"
+      },
+      "id": "n4",
+      "name": "Extraer IDs del Lead",
+      "type": "n8n-nodes-base.code",
+      "position": [640, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.facebook.com/v19.0/{{ $json.leadgen_id }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "fields", "value": "field_data,ad_id,form_id,created_time" },
+            { "name": "access_token", "value": "={{ $vars.META_TOKEN }}" }
+          ]
+        }
+      },
+      "id": "n5",
+      "name": "Obtener datos del formulario (Graph API)",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [840, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const fields = $input.first().json.field_data || [];\nconst map = {\n  full_name: 'nombre', first_name: 'nombre', last_name: 'apellido',\n  email: 'email', phone_number: 'telefono', phone: 'telefono',\n  presupuesto: 'presupuesto', budget: 'presupuesto',\n  desarrollo: 'interes', proyecto: 'interes',\n  inversion_o_uso: 'tipo_compra'\n};\nconst data = {};\nfor (const f of fields) {\n  const key = map[f.name.toLowerCase().replace(/ /g,'_')];\n  if (key) data[key] = (f.values || [''])[0];\n  else data[f.name] = (f.values || [''])[0];\n}\n\n// Normalizar teléfono a formato MX internacional\nlet tel = (data.telefono || '').replace(/[\\s\\-()]/g,'');\nif (tel && !tel.startsWith('+')) {\n  tel = tel.startsWith('52') ? `+${tel}` : `+52${tel}`;\n}\ndata.telefono = tel;\n\n// Nombre completo\nif (data.apellido) data.nombre = `${data.nombre || ''} ${data.apellido}`.trim();\n\ndata.ad_id = $input.first().json.ad_id || '';\ndata.form_id = $input.first().json.form_id || '';\ndata.leadgen_id = $input.first().json.leadgen_id;\nreturn [{ json: data }];"
+      },
+      "id": "n6",
+      "name": "Normalizar datos del lead",
+      "type": "n8n-nodes-base.code",
+      "position": [1040, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://rest.gohighlevel.com/v1/contacts/",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $vars.GHL_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"locationId\": \"{{ $vars.GHL_LOCATION_ID }}\",\n  \"firstName\": \"{{ $json.nombre.split(' ')[0] }}\",\n  \"lastName\": \"{{ $json.nombre.split(' ').slice(1).join(' ') }}\",\n  \"email\": \"{{ $json.email }}\",\n  \"phone\": \"{{ $json.telefono }}\",\n  \"source\": \"Facebook Lead Ad\",\n  \"tags\": [\"lead-ad\", \"facebook\", \"ia-agente\"],\n  \"customField\": [\n    { \"key\": \"desarrollo_interes\", \"value\": \"{{ $json.interes }}\" },\n    { \"key\": \"canal_entrada\", \"value\": \"facebook-leadgen\" },\n    { \"key\": \"presupuesto\", \"value\": \"{{ $json.presupuesto }}\" }\n  ]\n}"
+      },
+      "id": "n7",
+      "name": "Crear contacto en GHL",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1240, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://rest.gohighlevel.com/v1/pipelines/opportunities",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $vars.GHL_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"title\": \"Lead - {{ $('Normalizar datos del lead').item.json.interes || 'Sin desarrollo' }}\",\n  \"status\": \"open\",\n  \"stageId\": \"{{ $vars.GHL_STAGE_NUEVO_LEAD }}\",\n  \"pipelineId\": \"{{ $vars.GHL_PIPELINE_ID }}\",\n  \"contactId\": \"{{ $json.contact.id }}\",\n  \"locationId\": \"{{ $vars.GHL_LOCATION_ID }}\",\n  \"source\": \"Facebook Lead Ad\"\n}"
+      },
+      "id": "n8",
+      "name": "Crear oportunidad en GHL (Nuevo Lead)",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1440, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $('Normalizar datos del lead').item.json.telefono }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEquals" }
+            }
+          ]
+        }
+      },
+      "id": "n9",
+      "name": "¿Tiene teléfono?",
+      "type": "n8n-nodes-base.if",
+      "position": [1640, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.facebook.com/v19.0/{{ $vars.WHATSAPP_PHONE_NUMBER_ID }}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $vars.META_TOKEN }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{ $('Normalizar datos del lead').item.json.telefono }}\",\n  \"type\": \"text\",\n  \"text\": {\n    \"body\": \"¡Hola {{ $('Normalizar datos del lead').item.json.nombre.split(' ')[0] }}! 👋 Gracias por tu interés en nuestros desarrollos.\\n\\nSoy el asistente virtual y estoy aquí para ayudarte a encontrar tu hogar ideal. 🏡\\n\\n¿Qué te gustaría saber primero: precios, ubicación, amenidades o financiamiento?\"\n  }\n}"
+      },
+      "id": "n10",
+      "name": "Enviar WhatsApp de Bienvenida",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1840, 220]
+    },
+    {
+      "parameters": {
+        "url": "=https://rest.gohighlevel.com/v1/pipelines/opportunities/{{ $('Crear oportunidad en GHL (Nuevo Lead)').item.json.opportunity.id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $vars.GHL_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"stageId\": \"{{ $vars.GHL_STAGE_CONTACTADO }}\" }"
+      },
+      "id": "n11",
+      "name": "Avanzar a Contactado en GHL",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [2040, 220]
+    },
+    {
+      "parameters": {
+        "url": "=https://rest.gohighlevel.com/v1/contacts/{{ $('Crear contacto en GHL').item.json.contact.id }}/tags",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $vars.GHL_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"tags\": [\"sin-telefono\", \"seguimiento-manual\"] }"
+      },
+      "id": "n12",
+      "name": "Tag: sin teléfono (seguimiento manual)",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1840, 400]
+    }
+  ],
+  "connections": {
+    "Webhook Meta Leadgen": {
+      "main": [[{ "node": "Responder 200 a Meta", "type": "main", "index": 0 }, { "node": "¿Es evento de Lead Ad?", "type": "main", "index": 0 }]]
+    },
+    "¿Es evento de Lead Ad?": {
+      "main": [[{ "node": "Extraer IDs del Lead", "type": "main", "index": 0 }], []]
+    },
+    "Extraer IDs del Lead": {
+      "main": [[{ "node": "Obtener datos del formulario (Graph API)", "type": "main", "index": 0 }]]
+    },
+    "Obtener datos del formulario (Graph API)": {
+      "main": [[{ "node": "Normalizar datos del lead", "type": "main", "index": 0 }]]
+    },
+    "Normalizar datos del lead": {
+      "main": [[{ "node": "Crear contacto en GHL", "type": "main", "index": 0 }]]
+    },
+    "Crear contacto en GHL": {
+      "main": [[{ "node": "Crear oportunidad en GHL (Nuevo Lead)", "type": "main", "index": 0 }]]
+    },
+    "Crear oportunidad en GHL (Nuevo Lead)": {
+      "main": [[{ "node": "¿Tiene teléfono?", "type": "main", "index": 0 }]]
+    },
+    "¿Tiene teléfono?": {
+      "main": [
+        [{ "node": "Enviar WhatsApp de Bienvenida", "type": "main", "index": 0 }],
+        [{ "node": "Tag: sin teléfono (seguimiento manual)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Enviar WhatsApp de Bienvenida": {
+      "main": [[{ "node": "Avanzar a Contactado en GHL", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "staticData": null,
+  "tags": [{ "name": "inmobiliario" }]
+}
