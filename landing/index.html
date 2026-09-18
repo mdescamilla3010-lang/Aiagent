@@ -209,6 +209,8 @@ html[data-vertical="cmms"] .pcard.featured .pfeats .f:before { color:#5EEAD4; }
 
 .pay-note { margin-top:28px; display:flex; align-items:center; gap:12px; font-size:13px; color:var(--muted); }
 .pay-note .pn-badge { font-family:'Space Mono',monospace; font-size:10px; border:1.5px solid var(--line); padding:5px 10px; color:var(--muted); white-space:nowrap; }
+.unlimited-note { margin-top:28px; display:flex; align-items:center; gap:12px; font-size:13.5px; color:var(--ink); }
+.unlimited-note .un-badge { font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.04em; border:1.5px solid var(--accent); background:var(--accent-soft); color:var(--accent); padding:5px 10px; white-space:nowrap; }
 
 /* -------- TRUST -------- */
 .trust-grid { display:grid; grid-template-columns: repeat(3,1fr); gap:32px; margin-top:44px; }
@@ -484,12 +486,17 @@ html[data-vertical="cmms"] .price-grid.v-cmms { display:grid; }
       </div>
     </div>
 
+    <div class="unlimited-note v-dms reveal">
+      <div class="un-badge">✓ SIN LÍMITE</div>
+      <div>Órdenes de servicio <b>ilimitadas en los 3 planes</b> — sin candados, sin cobros extra por volumen.</div>
+    </div>
+
     <!-- DMS PRICING -->
     <div class="price-grid v-dms reveal">
       <div class="pcard">
         <div class="pch"><div class="tag">Starter</div><div class="tname">Taller Individual</div></div>
-        <div class="pp"><span class="amt">$2,690</span> <span class="per">MXN / mes</span></div>
-        <div class="specs"><b>Hasta 150</b> órdenes de servicio/mes<br><b>1</b> usuario · <b>1</b> sucursal</div>
+        <div class="pp"><span class="amt">$998</span> <span class="per">MXN / mes</span></div>
+        <div class="specs">Órdenes de servicio <b>ilimitadas</b><br><b>1-2</b> sucursales · <b>hasta 3</b> usuarios</div>
         <div class="pfeats">
           <div class="f">Recepción digital &lt;45 seg</div>
           <div class="f">Inspección visual en semáforo</div>
@@ -497,14 +504,14 @@ html[data-vertical="cmms"] .price-grid.v-cmms { display:grid; }
           <div class="f">Soporte por chat</div>
         </div>
         <div class="pactions">
-          <a class="btn btn-dark" href="https://wa.me/528140063995?text=Hola%2C%20quiero%20empezar%20el%20piloto%20de%2030%20d%C3%ADas%20del%20plan%20Starter%20DMS%20%28%242%2C690%20MXN/mes%29." target="_blank" rel="noopener">Empezar piloto gratis</a>
-          <a class="btn btn-ghost" href="https://wa.me/528140063995?text=Hola%2C%20quiero%20suscribirme%20al%20plan%20Starter%20DMS%20%28%242%2C690%20MXN/mes%29." target="_blank" rel="noopener">Suscribirme</a>
+          <a class="btn btn-dark" href="https://wa.me/528140063995?text=Hola%2C%20quiero%20empezar%20el%20piloto%20de%2030%20d%C3%ADas%20del%20plan%20Starter%20DMS%20%28%24998%20MXN/mes%29." target="_blank" rel="noopener">Empezar piloto gratis</a>
+          <a class="btn btn-ghost" href="https://wa.me/528140063995?text=Hola%2C%20quiero%20suscribirme%20al%20plan%20Starter%20DMS%20%28%24998%20MXN/mes%29." target="_blank" rel="noopener">Suscribirme</a>
         </div>
       </div>
       <div class="pcard featured">
         <div class="pch"><div class="tag">Growth · Recomendado</div><div class="tname">Taller en Crecimiento</div></div>
-        <div class="pp"><span class="amt">$3,500</span> <span class="per">MXN / mes</span></div>
-        <div class="specs"><b>Hasta 400</b> órdenes de servicio/mes<br><b>Usuarios ilimitados</b> · 1 sucursal</div>
+        <div class="pp"><span class="amt">$1,700</span> <span class="per">MXN / mes</span></div>
+        <div class="specs">Órdenes de servicio <b>ilimitadas</b><br><b>3-5</b> sucursales · <b>Usuarios ilimitados</b></div>
         <div class="pfeats">
           <div class="f">Todo lo de Starter</div>
           <div class="f">Reportes de ticket promedio</div>
@@ -513,14 +520,14 @@ html[data-vertical="cmms"] .price-grid.v-cmms { display:grid; }
           <div class="f">Soporte prioritario</div>
         </div>
         <div class="pactions">
-          <a class="btn btn-primary" href="https://wa.me/528140063995?text=Hola%2C%20quiero%20empezar%20el%20piloto%20de%2030%20d%C3%ADas%20del%20plan%20Growth%20DMS%20%28%243%2C500%20MXN/mes%29." target="_blank" rel="noopener">Empezar piloto gratis</a>
-          <a class="btn btn-ghost" href="https://wa.me/528140063995?text=Hola%2C%20quiero%20suscribirme%20al%20plan%20Growth%20DMS%20%28%243%2C500%20MXN/mes%29." target="_blank" rel="noopener">Suscribirme</a>
+          <a class="btn btn-primary" href="https://wa.me/528140063995?text=Hola%2C%20quiero%20empezar%20el%20piloto%20de%2030%20d%C3%ADas%20del%20plan%20Growth%20DMS%20%28%241%2C700%20MXN/mes%29." target="_blank" rel="noopener">Empezar piloto gratis</a>
+          <a class="btn btn-ghost" href="https://wa.me/528140063995?text=Hola%2C%20quiero%20suscribirme%20al%20plan%20Growth%20DMS%20%28%241%2C700%20MXN/mes%29." target="_blank" rel="noopener">Suscribirme</a>
         </div>
       </div>
       <div class="pcard">
         <div class="pch"><div class="tag">Pro</div><div class="tname">Flotillas y Administración Total</div></div>
-        <div class="pp"><span class="amt">$8,000</span> <span class="per">MXN / mes</span></div>
-        <div class="specs"><b>Órdenes ilimitadas</b><br>Usuarios ilimitados · <b>hasta 3</b> sucursales</div>
+        <div class="pp"><span class="amt">$2,800</span> <span class="per">MXN / mes</span></div>
+        <div class="specs">Órdenes de servicio <b>ilimitadas</b><br><b>Sucursales ilimitadas</b> · Usuarios ilimitados</div>
         <div class="pfeats">
           <div class="f">Todo lo de Growth</div>
           <div class="f">Puente Fiscal: CFDI + paquete contador</div>
@@ -530,8 +537,8 @@ html[data-vertical="cmms"] .price-grid.v-cmms { display:grid; }
           <div class="f">Account manager dedicado + SLA</div>
         </div>
         <div class="pactions">
-          <a class="btn btn-dark" href="https://wa.me/528140063995?text=Hola%2C%20quiero%20empezar%20el%20piloto%20de%2030%20d%C3%ADas%20del%20plan%20Pro%20DMS%20%28%248%2C000%20MXN/mes%29." target="_blank" rel="noopener">Empezar piloto gratis</a>
-          <a class="btn btn-ghost" href="https://wa.me/528140063995?text=Hola%2C%20quiero%20suscribirme%20al%20plan%20Pro%20DMS%20%28%248%2C000%20MXN/mes%29." target="_blank" rel="noopener">Suscribirme</a>
+          <a class="btn btn-dark" href="https://wa.me/528140063995?text=Hola%2C%20quiero%20empezar%20el%20piloto%20de%2030%20d%C3%ADas%20del%20plan%20Pro%20DMS%20%28%242%2C800%20MXN/mes%29." target="_blank" rel="noopener">Empezar piloto gratis</a>
+          <a class="btn btn-ghost" href="https://wa.me/528140063995?text=Hola%2C%20quiero%20suscribirme%20al%20plan%20Pro%20DMS%20%28%242%2C800%20MXN/mes%29." target="_blank" rel="noopener">Suscribirme</a>
         </div>
       </div>
     </div>
